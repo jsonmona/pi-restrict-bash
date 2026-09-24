@@ -9,7 +9,7 @@ The extension blocks common “escape hatches”, risky shell features, and cont
 The extension intercepts tool calls and blocks:
 
 - Tool calls to `grep`, `find`, and `ls`
-- `bash` commands that use unsafe shell features (for example command substitution, variable expansion, redirects, background execution, subshell syntax, and control-flow keywords)
+- `bash` commands that use unsafe shell features (for example background execution and subshell syntax)
 - `bash` commands that invoke disallowed programs (for example `sudo`, nested shells like `bash`/`sh`/`zsh`, `cat`, `tee`, `xargs`, `nl`, `fd`/`find`/`grep`/`ls`/`tree`)
 - `bash` wrapper commands like `eval`, `exec`, `nohup`, `timeout`, `time`, `watch`, and `stdbuf`
 - command-runner launchers like `npx`, `uvx`, `bunx`, `pnpx`, `pnpm dlx`, `yarn dlx`, `npm exec`, `bun x`, `uv tool run`, and scaffolding launchers like `npm create`/`npm init`/`yarn create`/`pnpm create`/`bun create` (`pnpm exec` and `yarn exec` are intentionally allowed)

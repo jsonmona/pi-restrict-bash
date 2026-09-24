@@ -20,17 +20,18 @@ test('blocks bash tool calls without a command', async () => {
   assert.match(result.reason, /called without a command/)
 })
 
-test('blocks command substitution and variable expansion', async () => {
+test('allows command substitution and variable expansion', async () => {
   const handler = createToolCallHandler()
   const backticks = await handler({ toolName: 'bash', input: { command: 'echo `date`' } })
-  assert(isBlocked(backticks))
-  assert.match(backticks.reason, /backticks/)
+  assert.equal(backticks, undefined)
   const dollarParens = await handler({ toolName: 'bash', input: { command: 'echo $(date)' } })
-  assert(isBlocked(dollarParens))
-  assert.match(dollarParens.reason, /\$\(\)/)
+  assert.equal(dollarParens, undefined)
+  const quotedSubstitution = await handler({ toolName: 'bash', input: { command: 'echo "$(printf "%s" today)"' } })
+  assert.equal(quotedSubstitution, undefined)
   const variableExpansion = await handler({ toolName: 'bash', input: { command: 'echo $HOME' } })
-  assert(isBlocked(variableExpansion))
-  assert.match(variableExpansion.reason, /Variable expansion/)
+  assert.equal(variableExpansion, undefined)
+  const shellInterpolation = await handler({ toolName: 'bash', input: { command: 'echo "home: $HOME"' } })
+  assert.equal(shellInterpolation, undefined)
 })
 
 test('allows pipes and redirections while blocking subshell syntax and background execution', async () => {
@@ -212,11 +213,12 @@ test('allows all git commands', async () => {
   assert.equal(statusWithCwdFlag, undefined)
 })
 
-test('blocks shell control-flow keywords', async () => {
+test('allows shell control flow', async () => {
   const handler = createToolCallHandler()
-  const result = await handler({ toolName: 'bash', input: { command: 'if true; then echo ok; fi' } })
-  assert(isBlocked(result))
-  assert.match(result.reason, /control-flow keyword/)
+  const conditional = await handler({ toolName: 'bash', input: { command: 'if true; then echo ok; fi' } })
+  assert.equal(conditional, undefined)
+  const loop = await handler({ toolName: 'bash', input: { command: 'for item in one two; do echo "$item"; done' } })
+  assert.equal(loop, undefined)
 })
 
 function createToolCallHandler(): ToolCallHandler {

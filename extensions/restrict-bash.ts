@@ -59,7 +59,6 @@ const commandRunnerFlagRules: Record<string, { booleanFlags: string[]; valueFlag
 }
 const readCommands = ['cat']
 const writeCommands = ['tee']
-const shellControlKeywords = ['if', 'then', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'function', 'select']
 const gitFlagsWithValues = ['-c', '-C']
 const gitLongFlagsWithValues = ['--config-env', '--exec-path', '--git-dir', '--work-tree', '--namespace', '--super-prefix']
 const gitWriteCommands = [
@@ -173,20 +172,6 @@ function getBashCommand(input: unknown): string | undefined {
   return trimmedCommand
 }
 
-function isShellExpansionStart(command: string, index: number, inDoubleQuotes: boolean): boolean {
-  if (command[index] !== '$') return false
-  const nextCharacter = command[index + 1]
-  if (!nextCharacter) return false
-  if (nextCharacter === '(' || nextCharacter === '{' || nextCharacter === "'") {
-    return true
-  }
-  if (!inDoubleQuotes && nextCharacter === '"') return true
-  if (/[A-Za-z_]/.test(nextCharacter)) return true
-  if (/[0-9]/.test(nextCharacter)) return true
-  if ('@*#?$!-'.includes(nextCharacter)) return true
-  return false
-}
-
 function isStandardStreamDuplication(command: string, index: number): boolean {
   const descriptor = command[index + 1]
   return command[index - 1] === '>' && (descriptor === '1' || descriptor === '2')
@@ -198,6 +183,7 @@ function splitCommand(command: string): SegmentResult {
   let inSingleQuotes = false
   let inDoubleQuotes = false
   let isEscaped = false
+  const commandSubstitutionQuoteStack: Array<{ inSingleQuotes: boolean; inDoubleQuotes: boolean }> = []
   for (let index = 0; index < command.length; index += 1) {
     const character = command[index]
     if (isEscaped) {
@@ -220,20 +206,20 @@ function splitCommand(command: string): SegmentResult {
       inDoubleQuotes = !inDoubleQuotes
       continue
     }
-    if (!inSingleQuotes && character === '`') {
-      return {
-        reason: 'Command substitution with backticks is blocked in the `bash` tool.',
-      }
-    }
     if (!inSingleQuotes && character === '$' && command[index + 1] === '(') {
-      return {
-        reason: 'Command substitution with `$()` is blocked in the `bash` tool.',
-      }
+      commandSubstitutionQuoteStack.push({ inSingleQuotes, inDoubleQuotes })
+      inSingleQuotes = false
+      inDoubleQuotes = false
+      current += '$('
+      index += 1
+      continue
     }
-    if (!inSingleQuotes && isShellExpansionStart(command, index, inDoubleQuotes)) {
-      return {
-        reason: 'Variable expansion and shell interpolation are blocked in the `bash` tool.',
-      }
+    if (!inSingleQuotes && !inDoubleQuotes && character === ')' && commandSubstitutionQuoteStack.length > 0) {
+      const parentQuotes = commandSubstitutionQuoteStack.pop()
+      inSingleQuotes = parentQuotes?.inSingleQuotes ?? false
+      inDoubleQuotes = parentQuotes?.inDoubleQuotes ?? false
+      current += character
+      continue
     }
     if (!inSingleQuotes && !inDoubleQuotes && (character === '(' || character === ')')) {
       return {
@@ -278,6 +264,11 @@ function splitCommand(command: string): SegmentResult {
   if (inSingleQuotes || inDoubleQuotes) {
     return {
       reason: 'Unterminated quotes are blocked in the `bash` tool.',
+    }
+  }
+  if (commandSubstitutionQuoteStack.length > 0) {
+    return {
+      reason: 'Unterminated command substitution is blocked in the `bash` tool.',
     }
   }
   const trimmedSegment = current.trim()
@@ -409,15 +400,6 @@ function getGitCommandTokens(tokens: string[]): string[] {
   return ['git', tokens[index], ...tokens.slice(index + 1)]
 }
 
-function getUnsupportedReason(tokens: string[]): string | undefined {
-  if (tokens.length === 0) return undefined
-  for (const keyword of shellControlKeywords) {
-    if (tokens[0] !== keyword) continue
-    return `The shell control-flow keyword \`${tokens[0]}\` is blocked in the \`bash\` tool.`
-  }
-  return undefined
-}
-
 function getSubcommandScanEndIndex(tokens: string[]): number {
   for (let index = 0; index < tokens.length; index += 1) {
     if (tokens[index] !== '--') continue
@@ -497,8 +479,6 @@ function matchesCommandRunnerSubcommand(tokens: string[], subcommandTokens: stri
 }
 
 function getForbiddenReason(tokens: string[]): string | undefined {
-  const unsupportedReason = getUnsupportedReason(tokens)
-  if (unsupportedReason) return unsupportedReason
   const commandTokens = getCommandTokens(tokens)
   if (commandTokens.length === 0) return undefined
   if (commandTokens[0] === 'git' || commandRunnerCommands.includes(commandTokens[0])) return undefined
