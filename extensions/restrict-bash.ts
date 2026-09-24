@@ -187,6 +187,11 @@ function isShellExpansionStart(command: string, index: number, inDoubleQuotes: b
   return false
 }
 
+function isStandardStreamDuplication(command: string, index: number): boolean {
+  const descriptor = command[index + 1]
+  return command[index - 1] === '>' && (descriptor === '1' || descriptor === '2')
+}
+
 function splitCommand(command: string): SegmentResult {
   const segments: string[] = []
   let current = ''
@@ -253,6 +258,10 @@ function splitCommand(command: string): SegmentResult {
       continue
     }
     if (character === '&') {
+      if (isStandardStreamDuplication(command, index)) {
+        current += character
+        continue
+      }
       if (command[index + 1] !== '&') {
         return {
           reason: 'Background execution is blocked in the `bash` tool.',
