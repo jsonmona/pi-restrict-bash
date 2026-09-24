@@ -12,9 +12,9 @@ type SegmentResult = {
   reason?: string
 }
 
-const searchCommands = ['fd', 'find', 'grep', 'ls', 'tree']
+const searchCommands = ['fd', 'find', 'grep', 'tree']
 const shellCommands = ['bash', 'sh', 'zsh']
-const wrapperCommands = ['eval', 'exec', 'nohup', 'timeout', 'time', 'watch', 'stdbuf']
+const wrapperCommands = ['eval', 'exec', 'nohup', 'watch', 'stdbuf']
 const commandRunnerCommands = ['bunx', 'npx', 'pnpx', 'uvx']
 const commandRunnerSubcommands: string[][] = [
   ['pnpm', 'dlx'],
@@ -162,10 +162,6 @@ const blockedTools = [
     toolName: 'find',
     reason: "The `find` tool is blocked. Use `rg --files` or `rg --files --glob '<path-glob>'` instead.",
   },
-  {
-    toolName: 'ls',
-    reason: "The `ls` tool is blocked. Use `rg --files` or `rg --files --glob '<path-glob>'` instead.",
-  },
 ]
 
 function getBashCommand(input: unknown): string | undefined {
@@ -232,11 +228,6 @@ function splitCommand(command: string): SegmentResult {
     if (!inSingleQuotes && isShellExpansionStart(command, index, inDoubleQuotes)) {
       return {
         reason: 'Variable expansion and shell interpolation are blocked in the `bash` tool.',
-      }
-    }
-    if (!inSingleQuotes && !inDoubleQuotes && (character === '<' || character === '>')) {
-      return {
-        reason: 'Redirection, heredocs, and herestrings are blocked in the `bash` tool.',
       }
     }
     if (!inSingleQuotes && !inDoubleQuotes && (character === '(' || character === ')')) {
@@ -501,9 +492,10 @@ function getForbiddenReason(tokens: string[]): string | undefined {
   if (unsupportedReason) return unsupportedReason
   const commandTokens = getCommandTokens(tokens)
   if (commandTokens.length === 0) return undefined
+  if (commandTokens[0] === 'git' || commandRunnerCommands.includes(commandTokens[0])) return undefined
   for (const commandRunnerSubcommand of commandRunnerSubcommands) {
     if (!matchesCommandRunnerSubcommand(commandTokens, commandRunnerSubcommand)) continue
-    return `The command runner \`${commandRunnerSubcommand.join(' ')}\` is blocked in the \`bash\` tool because it can execute untrusted remote tools.`
+    return undefined
   }
   if (isSedInPlace(commandTokens)) {
     return 'The `sed -i` command is blocked in the `bash` tool.'
